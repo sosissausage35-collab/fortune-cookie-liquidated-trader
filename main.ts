@@ -8,6 +8,10 @@
 // whose second half turns the word "fortune" against the trader: the
 // fortune in question is the money the exchange already took. Rueful,
 // warm, and aimed at the loss itself — never at the trader.
+//
+// Validation is a table of single-purpose rules: each rule returns an
+// error message or null, and `validate` runs them all in order, so a new
+// constraint is one new rule instead of another branch inside a monolith.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 
@@ -18,27 +22,65 @@ const OUTPUT_PATH = "/output/entry.txt";
 const MAX_WORDS = 20;
 const MAX_CHARS = 160;
 
-function wordCount(text: string): number {
+type Rule = (text: string) => string | null;
+
+function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+const checkNotEmpty: Rule = (text) =>
+  text.length < 1 ? "entry must not be empty" : null;
+
+const checkMaxChars: Rule = (text) =>
+  text.length > MAX_CHARS
+    ? `entry must be at most ${MAX_CHARS} characters, got ${text.length}`
+    : null;
+
+const checkNotWhitespaceOnly: Rule = (text) =>
+  text.trim().length === 0 ? "entry must not be only white space" : null;
+
+const checkNoSurroundingWhitespace: Rule = (text) =>
+  text !== text.trim()
+    ? "entry must not start or end with white space"
+    : null;
+
+const checkSingleLine: Rule = (text) =>
+  text.includes("\n") || text.includes("\r")
+    ? "entry must be a single line"
+    : null;
+
+const checkMaxWords: Rule = (text) => {
+  const words = countWords(text);
+  return words > MAX_WORDS
+    ? `entry must be at most ${MAX_WORDS} words, got ${words}`
+    : null;
+};
+
+const checkEndsWithPunctuation: Rule = (text) =>
+  /[.!?]$/.test(text)
+    ? null
+    : "entry must end with terminal punctuation (. ! ?)";
+
+const RULES: Rule[] = [
+  checkNotEmpty,
+  checkMaxChars,
+  checkNotWhitespaceOnly,
+  checkNoSurroundingWhitespace,
+  checkSingleLine,
+  checkMaxWords,
+  checkEndsWithPunctuation,
+];
+
 function validate(text: string): void {
-  if (text.length < 1 || text.length > MAX_CHARS) {
-    throw new Error(`entry must be 1-${MAX_CHARS} characters, got ${text.length}`);
-  }
-  if (text.trim().length === 0) {
-    throw new Error("entry must not be only white space");
-  }
-  if (text.includes("\n") || text.includes("\r")) {
-    throw new Error("entry must be a single line");
-  }
-  const words = wordCount(text);
-  if (words > MAX_WORDS) {
-    throw new Error(`entry must be at most ${MAX_WORDS} words, got ${words}`);
+  for (const rule of RULES) {
+    const problem = rule(text);
+    if (problem !== null) {
+      throw new Error(problem);
+    }
   }
 }
 
 validate(FORTUNE);
 mkdirSync("/output", { recursive: true });
 writeFileSync(OUTPUT_PATH, FORTUNE, "utf8");
-console.log(`wrote ${FORTUNE.length} chars, ${wordCount(FORTUNE)} words to ${OUTPUT_PATH}`);
+console.log(`wrote ${FORTUNE.length} chars, ${countWords(FORTUNE)} words to ${OUTPUT_PATH}`);
